@@ -14,30 +14,47 @@ import altair as alt
 import requests, zipfile, io, os
 
 # ================================
-# ✅ Load the Trained Model from GitHub Release
+# ✅ Load the trained model from GitHub Releases
 # ================================
 MODEL_URL = "https://github.com/AbdoulieJBah/obesity-predictor/releases/download/v1.0/obesity_model_pipeline.zip"
-MODEL_ZIP_PATH = "obesity_model_pipeline.zip"
 MODEL_PKL_PATH = "obesity_model_pipeline.pkl"
 
 @st.cache_resource
 def load_model():
-    if not os.path.exists(MODEL_PKL_PATH):
-        st.info("📦 Downloading model from GitHub... please wait a few seconds ⏳")
-        response = requests.get(MODEL_URL)
-        with open(MODEL_ZIP_PATH, "wb") as f:
-            f.write(response.content)
+    try:
+        # If model already exists locally, use it
+        if os.path.exists(MODEL_PKL_PATH):
+            with open(MODEL_PKL_PATH, "rb") as f:
+                model = pickle.load(f)
+            return model
 
-        # Unzip the file
-        with zipfile.ZipFile(MODEL_ZIP_PATH, "r") as zip_ref:
+        st.info("📦 Downloading model from GitHub... please wait ⏳")
+
+        # Stream the response (avoids huge memory spikes)
+        with requests.get(MODEL_URL, stream=True, timeout=120) as r:
+            r.raise_for_status()
+            with open("model_temp.zip", "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    f.write(chunk)
+
+        # Extract .zip file
+        with zipfile.ZipFile("model_temp.zip", "r") as zip_ref:
             zip_ref.extractall(".")
-        st.success("✅ Model downloaded and extracted successfully!")
 
-    with open(MODEL_PKL_PATH, "rb") as f:
-        model = pickle.load(f)
-    return model
+        os.remove("model_temp.zip")  # ✅ cleanup after extraction
+
+        with open(MODEL_PKL_PATH, "rb") as f:
+            model = pickle.load(f)
+
+        st.success("✅ Model downloaded and loaded successfully!")
+        return model
+
+    except Exception as e:
+        st.error(f"❌ Failed to load model: {e}")
+        st.stop()
 
 model = load_model()
+
 
 
 # ================================
